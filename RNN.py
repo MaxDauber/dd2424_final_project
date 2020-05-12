@@ -1,42 +1,37 @@
 import torch
 from torch import nn
+from torch.nn import functional
 import numpy as np
 
 
 class RNN(nn.Module):
-    def __init__(self, input_size, output_size, hidden_dim, n_layers):
+    def __init__(self, input_size, hidden_dim, n_layers):
         super(RNN, self).__init__()
 
         # Defining some parameters
         self.hidden_dim = hidden_dim
         self.n_layers = n_layers
 
-        # Defining the layers
-        # RNN Layer
-        self.rnn = nn.RNN(input_size, hidden_dim, n_layers, batch_first=True)
-        # Fully connected layer
-        self.fc = nn.Linear(hidden_dim, output_size)
+        # Defining the parameters
+        '''Weights'''
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_dim,
+            num_layers=n_layers,
+            batch_first=True)
+        self.Wo = nn.Linear(hidden_dim, input_size)
 
-    def forward(self, x):
-        batch_size = x.size(0)
-
-        # Initializing hidden state for first input using method defined below
-        hidden = self.init_hidden(batch_size)
-
-        # Passing in the input and hidden state into the model and obtaining outputs
-        out, hidden = self.rnn(x, hidden)
-
-        # Reshaping the outputs such that it can be fit into the fully connected layer
-        out = out.contiguous().view(-1, self.hidden_dim)
-        out = self.fc(out)
-
-        return out, hidden
+    def forward(self, X, H=None):
+        if H is None:
+            H = self.init_hidden(X.size(0))
+        X, H = self.lstm(X, H)
+        out = self.Wo(X)
+        return functional.log_softmax(out, 2), H
 
     def init_hidden(self, batch_size):
-        # This method generates the first hidden state of zeros which we'll use in the forward pass
-        # We'll send the tensor holding the hidden state to the device we specified earlier as well
-        hidden = torch.zeros(self.n_layers, batch_size, self.hidden_dim)
-        return hidden
+        h = torch.randn(self.n_layers, batch_size, self.hidden_dim)
+        c = torch.randn(self.n_layers, batch_size, self.hidden_dim)
+        return [h, c]
 
 def one_hot_encode(sequence, dict_size, seq_len, batch_size):
     # Creating a multi-dimensional array of zeros with the desired output shape
@@ -54,7 +49,6 @@ def predict(model, character):
     character = np.array([[char2int[c] for c in character]])
     character = one_hot_encode(character, dict_size, character.shape[1], 1)
     character = torch.from_numpy(character)
-    character.to(device)
 
     out, hidden = model(character)
 
@@ -81,6 +75,7 @@ def sample(model, out_len, start='hey'):
 book_fname = 'Datasets/goblet_book.txt'
 with open(book_fname) as file:
     text = file.read()
+
 chars = set(text)
 
 # Creating a dictionary that maps integers to the characters
@@ -100,8 +95,7 @@ while e <= len(text)-seq_length-1:
 
     # Remove firsts character for target sequence
     target_seq.append([char2int[character] for character in text[e+1: e + 1 + seq_length]])
-
-    e += seq_length
+    e += seq_length + 1
 
 dict_size = len(char2int)
 batch_size = len(input_seq)
@@ -111,44 +105,32 @@ print("Input shape: {} --> (Batch Size, Sequence Length, One-Hot Encoding Size)"
 
 input_seq = torch.from_numpy(input_seq)
 target_seq = torch.Tensor(target_seq)
-
-# torch.cuda.is_available() checks and returns a Boolean True if a GPU is available, else it'll return False
-is_cuda = torch.cuda.is_available()
-
-# If we have a GPU available, we'll set our device to GPU. We'll use this device variable later in our code.
-if is_cuda is False:
-    device = torch.device("cuda")
-    print("GPU is available")
-else:
-    device = torch.device("cpu")
-    print("GPU not available, CPU used")
+print(target_seq.view(-1).shape)
 
 # Instantiate the model with hyperparameters
-model = RNN(input_size=dict_size, output_size=dict_size, hidden_dim=50, n_layers=3)
-# We'll also set the model to the device that we defined earlier (default is CPU)
-model = model.to(device)
+model = RNN(input_size=dict_size, hidden_dim=100, n_layers=1)
+
 
 # Define hyperparameters
-n_epochs = 2
-lr=0.001
+n_epochs = 100
+lr=0.1
 
 # Define Loss, Optimizer
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.RMSprop(model.parameters(), lr=lr)
+optimizer = torch.optim.Adam(params=model.parameters(), lr=lr)
+
 
 # Training Run
-input_seq = input_seq.to(device)
 for epoch in range(1, n_epochs + 1):
     optimizer.zero_grad()  # Clears existing gradients from previous epoch
-    input_seq = input_seq.to(device)
     output, hidden = model(input_seq)
-    output = output.to(device)
-    target_seq = target_seq.to(device)
     loss = criterion(output, target_seq.view(-1).long())
     loss.backward()  # Does backpropagation and calculates gradients
+
+    nn.utils.clip_grad_norm(model.parameters, 1)
     optimizer.step()  # Updates the weights accordingly
 
-    print('Epoch: {}/{}.............'.format(epoch, n_epochs), end=' ')
-    print("Loss: {:.4f}".format(loss.item()))
-
-print(sample(model, 100, text[0:10]))
+    if epoch % 10 == 0:
+        print('Epoch: {}/{}.............'.format(epoch, n_epochs), end=' ')
+        print("Loss: {:.4f}".format(loss.item()))
+        print(sample(model, 100, 'H'))
