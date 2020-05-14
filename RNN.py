@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.nn import functional
+import torch.utils.data
 import numpy as np
 
 
@@ -51,8 +52,7 @@ def predict(model, character):
     character = torch.from_numpy(character)
 
     out, hidden = model(character)
-
-    prob = nn.functional.softmax(out[-1], dim=0).data
+    prob = out[-1, -1, :].data
     # Taking the class with the highest probability score from the output
     char_ind = torch.max(prob, dim=0)[1].item()
 
@@ -105,10 +105,11 @@ print("Input shape: {} --> (Batch Size, Sequence Length, One-Hot Encoding Size)"
 
 input_seq = torch.from_numpy(input_seq)
 target_seq = torch.Tensor(target_seq)
-print(target_seq.view(-1).shape)
+
+dataset = torch.utils.data.TensorDataset(input_seq, target_seq)
 
 # Instantiate the model with hyperparameters
-model = RNN(input_size=dict_size, hidden_dim=100, n_layers=1)
+model = RNN(input_size=dict_size, hidden_dim=50, n_layers=1)
 
 
 # Define hyperparameters
@@ -122,15 +123,23 @@ optimizer = torch.optim.Adam(params=model.parameters(), lr=lr)
 
 # Training Run
 for epoch in range(1, n_epochs + 1):
-    optimizer.zero_grad()  # Clears existing gradients from previous epoch
-    output, hidden = model(input_seq)
-    loss = criterion(output, target_seq.view(-1).long())
-    loss.backward()  # Does backpropagation and calculates gradients
+    hiddens = model.init_hidden(batch_size)
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=True,
+        pin_memory=True)
+    for batch_idx, data in enumerate(dataloader, 0):
+        inputs, targets = data
+        optimizer.zero_grad()  # Clears existing gradients from previous epoch
+        output, hiddens = model(input_seq, hiddens)
+        loss = criterion(output.view(batch_size*seq_length, dict_size), target_seq.view(-1).long())
+        loss.backward()  # Does backpropagation and calculates gradients
 
-    nn.utils.clip_grad_norm(model.parameters, 1)
-    optimizer.step()  # Updates the weights accordingly
-
-    if epoch % 10 == 0:
-        print('Epoch: {}/{}.............'.format(epoch, n_epochs), end=' ')
-        print("Loss: {:.4f}".format(loss.item()))
-        print(sample(model, 100, 'H'))
+        nn.utils.clip_grad_norm_(model.parameters(), 1)
+        optimizer.step()  # Updates the weights accordingly
+        if epoch % 5 == 0:
+            print('Epoch: {}/{}.............'.format(epoch, n_epochs), end=' ')
+            print("Loss: {:.4f}".format(loss.item()))
+            print(sample(model, 100, 'Har'))
