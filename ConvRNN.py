@@ -215,5 +215,5 @@ if __name__ == '__main__':
         target_seq.append([char2int[character] for character in text[e + 1: e + 1 + seq_length]])
 
         e += seq_length
-        
+
     model = ConvLSTM()
