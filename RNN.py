@@ -61,7 +61,6 @@ def predict(model, character):
 # This function takes the desired output length and input characters as arguments, returning the produced sentence
 def sample(model, out_len, start='hey'):
     model.eval() # eval mode
-    start = start.lower()
     # First off, run through the starting characters
     chars = [ch for ch in start]
     size = out_len - len(chars)
@@ -133,11 +132,11 @@ for epoch in range(1, n_epochs + 1):
     for batch_idx, data in enumerate(dataloader, 0):
         inputs, targets = data
         optimizer.zero_grad()  # Clears existing gradients from previous epoch
-        output, hiddens = model(input_seq, hiddens)
-        loss = criterion(output.view(batch_size*seq_length, dict_size), target_seq.view(-1).long())
+        output, hiddens = model(inputs, hiddens)
+        loss = criterion(output.permute(0, 2, 1), targets.long())
         loss.backward()  # Does backpropagation and calculates gradients
 
-        nn.utils.clip_grad_norm_(model.parameters(), 1)
+        #nn.utils.clip_grad_norm_(model.parameters(), 1)
         optimizer.step()  # Updates the weights accordingly
         if epoch % 5 == 0:
             print('Epoch: {}/{}.............'.format(epoch, n_epochs), end=' ')
