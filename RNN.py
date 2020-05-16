@@ -125,9 +125,11 @@ optimizer = torch.optim.Adam(params=model.parameters(), lr=lr)
 
 
 # Training Run
+iteration = 0
 for epoch in range(1, n_epochs + 1):
     hiddens = model.init_hidden(batch_size)
     for batch_idx in range(len(inputs_seq)):
+        iteration += 1
         inputs = torch.from_numpy(inputs_seq[batch_idx])
         targets = torch.Tensor(targets_seq[batch_idx])
         detach(hiddens)
@@ -138,7 +140,7 @@ for epoch in range(1, n_epochs + 1):
 
         nn.utils.clip_grad_norm_(model.parameters(), 5)
         optimizer.step()  # Updates the weights accordingly
-        if batch_idx % 10000 == 0:
-            print('Iteration {}, Epoch: {}/{}.............'.format(batch_idx, epoch, n_epochs), end=' ')
+        if iteration % 1000 == 0:
+            print('Iteration {}, Epoch: {}/{}.............'.format(iteration, epoch, n_epochs), end=' ')
             print("Loss: {:.4f}".format(loss.item()))
             print(sample(model, 100, 'Har'))

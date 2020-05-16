@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from Models import BasicLSTM
+from Models import BasicLSTM, RNN, StackedLSTM
 from dataProcessor import DataProcessor, one_hot_encode
 
 def detach(layers):
@@ -57,7 +57,7 @@ def train(model, inputs_seq, targets_seq, n_epochs, eta, dataProcessor):
 
             nn.utils.clip_grad_norm_(model.parameters(), 5)
             optimizer.step()  # Updates the weights accordingly
-            if iteration % 10000 == 0:
+            if iteration % 1000 == 0:
                 print('Iteration {}, Epoch: {}/{}.............'.format(iteration, epoch, n_epochs), end=' ')
                 print("Loss: {:.4f}".format(loss.item()))
                 print(sample(model, 100, 'Har', dataProcessor))
@@ -79,6 +79,6 @@ if __name__ == "__main__":
     inputs, targets = processor.encodeData(seq_length, batch_size)
 
     # Create the model
-    model = BasicLSTM(input_size=processor.encoding_size, hidden_dim=hidden_size, n_layers=n_layers)
+    model = StackedLSTM(input_size=processor.encoding_size, hidden_dim=hidden_size, n_layers=n_layers)
 
     train(model, inputs, targets, n_epoch, eta, processor)

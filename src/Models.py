@@ -60,7 +60,7 @@ class BasicLSTM(nn.Module):
 
 class StackedLSTM(nn.Module):
     def __init__(self, input_size, hidden_dim, n_layers):
-        super(BasicLSTM, self).__init__()
+        super(StackedLSTM, self).__init__()
 
         self.hidden_dim = hidden_dim
         self.n_layers = n_layers
@@ -72,24 +72,24 @@ class StackedLSTM(nn.Module):
             num_layers=n_layers,
             batch_first=True)
         self.lstm2 = nn.LSTM(
-            input_size=input_size,
+            input_size=input_size+hidden_dim,
             hidden_size=hidden_dim,
             num_layers=n_layers,
             batch_first=True)
         self.lstm3 = nn.LSTM(
-            input_size=input_size,
+            input_size=input_size+hidden_dim,
             hidden_size=hidden_dim,
             num_layers=n_layers,
             batch_first=True)
 
-        self.Wo = nn.Linear(hidden_dim, input_size)
+        self.Wo = nn.Linear(hidden_dim*3, input_size)
 
     def forward(self, X, H=None):
         if H is None:
             H = self.init_hidden(X.size(0))
         h1, h2, h3 = H
         outs_1, h1 = self.lstm1(X, h1)
-        outs_2, h2 = self.lstm2(torch.cat((X, outs_1), 2), h1)
+        outs_2, h2 = self.lstm2(torch.cat((X, outs_1), 2), h2)
         outs_3, h3 = self.lstm3(torch.cat((X, outs_2), 2), h3)
         out = self.Wo(torch.cat((outs_1, outs_2, outs_3), 2))
         return functional.log_softmax(out, 2), [h1, h2, h3]
