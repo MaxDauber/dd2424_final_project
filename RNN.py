@@ -32,7 +32,7 @@ class RNN(nn.Module):
     def init_hidden(self, batch_size):
         h = torch.randn(self.n_layers, batch_size, self.hidden_dim)
         c = torch.randn(self.n_layers, batch_size, self.hidden_dim)
-        return [h, c]
+        return (h, c)
 
 def one_hot_encode(sequence, dict_size, seq_len, batch_size):
     # Creating a multi-dimensional array of zeros with the desired output shape
@@ -41,22 +41,22 @@ def one_hot_encode(sequence, dict_size, seq_len, batch_size):
     # Replacing the 0 at the relevant character index with a 1 to represent that character
     for i in range(batch_size):
         for u in range(seq_len):
-            features[i, u, sequence[i][u]] = 1
+            #print((i+1)*u)
+            features[i, u, sequence[i*seq_len + u]] = 1
     return features
 
 # This function takes in the model and character as arguments and returns the next character prediction and hidden state
-def predict(model, character):
+def predict(model, characters):
     # One-hot encoding our input to fit into the model
-    character = np.array([[char2int[c] for c in character]])
-    character = one_hot_encode(character, dict_size, character.shape[1], 1)
-    character = torch.from_numpy(character)
+    characters = [char2int[c] for c in characters]
+    characters = one_hot_encode(characters, dict_size, len(characters), 1)
+    characters = torch.from_numpy(characters)
 
-    out, hidden = model(character)
-    prob = out[-1, -1, :].data
-    # Taking the class with the highest probability score from the output
-    char_ind = torch.max(prob, dim=0)[1].item()
+    out, hidden = model(characters)
+    char_id = torch.multinomial(
+        out[0][-1].exp() / 100, num_samples=1).item()
 
-    return int2char[char_ind], hidden
+    return int2char[char_id], hidden
 
 # This function takes the desired output length and input characters as arguments, returning the produced sentence
 def sample(model, out_len, start='hey'):
@@ -71,6 +71,17 @@ def sample(model, out_len, start='hey'):
 
     return ''.join(chars)
 
+def detach(layers):
+    '''
+    Remove variables' parent node after each sequence,
+    basically no where to propagate gradient
+    '''
+    if (type(layers) is list) or (type(layers) is tuple):
+        for l in layers:
+            detach(l)
+    else:
+        layers.detach_()  # layers = layers.detach()
+
 book_fname = 'Datasets/goblet_book.txt'
 with open(book_fname) as file:
     text = file.read()
@@ -84,28 +95,21 @@ int2char = dict(enumerate(chars))
 char2int = {char: ind for ind, char in int2char.items()}
 
 # Creating lists that will hold our input and target sequences
-input_seq = []
-target_seq = []
+inputs_seq = []
+targets_seq = []
 e = 0
 seq_length = 25
-while e <= len(text)-seq_length-1:
-    # Remove last character for input sequence
-    input_seq.append([char2int[character] for character in text[e: e + seq_length]])
-
-    # Remove firsts character for target sequence
-    target_seq.append([char2int[character] for character in text[e+1: e + 1 + seq_length]])
-    e += seq_length + 1
-
 dict_size = len(char2int)
-batch_size = len(input_seq)
+batch_size = 1
+while e <= len(text)-seq_length*batch_size-1:
 
-input_seq = one_hot_encode(input_seq, dict_size, seq_length, batch_size)
-print("Input shape: {} --> (Batch Size, Sequence Length, One-Hot Encoding Size)".format(input_seq.shape))
+    input_seq = [char2int[character] for character in text[e: e + seq_length*batch_size]]
+    inputs_seq.append(one_hot_encode(input_seq, dict_size, seq_length, batch_size))
 
-input_seq = torch.from_numpy(input_seq)
-target_seq = torch.Tensor(target_seq)
+    target_seq = [char2int[character] for character in text[e+1: e + 1 + seq_length*batch_size]]
+    targets_seq.append(np.reshape(target_seq, (batch_size, -1)))
 
-dataset = torch.utils.data.TensorDataset(input_seq, target_seq)
+    e += seq_length*batch_size
 
 # Instantiate the model with hyperparameters
 model = RNN(input_size=dict_size, hidden_dim=50, n_layers=1)
@@ -123,22 +127,18 @@ optimizer = torch.optim.Adam(params=model.parameters(), lr=lr)
 # Training Run
 for epoch in range(1, n_epochs + 1):
     hiddens = model.init_hidden(batch_size)
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        drop_last=True,
-        pin_memory=True)
-    for batch_idx, data in enumerate(dataloader, 0):
-        inputs, targets = data
+    for batch_idx in range(len(inputs_seq)):
+        inputs = torch.from_numpy(inputs_seq[batch_idx])
+        targets = torch.Tensor(targets_seq[batch_idx])
+        detach(hiddens)
         optimizer.zero_grad()  # Clears existing gradients from previous epoch
         output, hiddens = model(inputs, hiddens)
-        loss = criterion(output.permute(0, 2, 1), targets.long())
+        loss = criterion(output.transpose(2,1), targets.long())
         loss.backward()  # Does backpropagation and calculates gradients
 
-        #nn.utils.clip_grad_norm_(model.parameters(), 1)
+        nn.utils.clip_grad_norm_(model.parameters(), 5)
         optimizer.step()  # Updates the weights accordingly
-        if epoch % 5 == 0:
-            print('Epoch: {}/{}.............'.format(epoch, n_epochs), end=' ')
+        if batch_idx % 10000 == 0:
+            print('Iteration {}, Epoch: {}/{}.............'.format(batch_idx, epoch, n_epochs), end=' ')
             print("Loss: {:.4f}".format(loss.item()))
             print(sample(model, 100, 'Har'))

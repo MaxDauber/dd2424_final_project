@@ -9,23 +9,22 @@ from argparse import Namespace
 
 flags = Namespace(
     train_file='Datasets/goblet_book.txt',
-    seq_size=32,
-    batch_size=16,
-    embedding_size=64,
-    lstm_size=64,
+    seq_size=25,
+    batch_size=1,
+    embedding_size=83,
+    lstm_size=100,
     gradients_norm=5,
-    initial_words=['I', 'am'],
+    initial_words=['H'],
     predict_top_k=5,
-    checkpoint_path='checkpoint',
 )
 
 def get_data_from_file(train_file, batch_size, seq_size):
     with open(train_file, 'r') as f:
         text = f.read()
-    text = text.split()
+    #text = text.split()
 
     word_counts = Counter(text)
-    sorted_vocab = sorted(word_counts, key=word_counts.get, reverse=True)
+    sorted_vocab = set(text)#sorted(word_counts, key=word_counts.get, reverse=True)
     int_to_vocab = {k: w for k, w in enumerate(sorted_vocab)}
     vocab_to_int = {w: k for k, w in int_to_vocab.items()}
     n_vocab = len(int_to_vocab)
@@ -35,11 +34,12 @@ def get_data_from_file(train_file, batch_size, seq_size):
     int_text = [vocab_to_int[w] for w in text]
     num_batches = int(len(int_text) / (seq_size * batch_size))
     in_text = int_text[:num_batches * batch_size * seq_size]
-    out_text = np.zeros_like(in_text)
-    out_text[:-1] = in_text[1:]
-    out_text[-1] = in_text[0]
+    out_text = int_text[1:num_batches * batch_size * seq_size+1]
+
     in_text = np.reshape(in_text, (batch_size, -1))
     out_text = np.reshape(out_text, (batch_size, -1))
+    print(out_text.shape, "\n")
+
     return int_to_vocab, vocab_to_int, n_vocab, in_text, out_text
 
 def get_batches(in_text, out_text, batch_size, seq_size):
@@ -53,8 +53,8 @@ class RNNModule(nn.Module):
         self.seq_size = seq_size
         self.lstm_size = lstm_size
         self.embedding = nn.Embedding(n_vocab, embedding_size)
-        self.lstm = nn.LSTM(embedding_size,
-                            lstm_size,
+        self.lstm = nn.LSTM(input_size=embedding_size,
+                            hidden_size=lstm_size,
                             batch_first=True)
         self.dense = nn.Linear(lstm_size, n_vocab)
     def forward(self, x, prev_state):
@@ -74,7 +74,34 @@ def get_loss_and_train_op(net, lr=0.001):
 
     return criterion, optimizer
 
+def predict(device, net, words, n_vocab, vocab_to_int, int_to_vocab, top_k=5):
+    net.eval()
+
+    state_h, state_c = net.zero_state(1)
+    state_h = state_h.to(device)
+    state_c = state_c.to(device)
+    for w in words:
+        ix = torch.tensor([[vocab_to_int[w]]]).to(device)
+        output, (state_h, state_c) = net(ix.long(), (state_h, state_c))
+
+    _, top_ix = torch.topk(output[0], k=top_k)
+    choices = top_ix.tolist()
+    choice = np.random.choice(choices[0])
+
+    words.append(int_to_vocab[choice])
+    for _ in range(n_vocab):
+        ix = torch.tensor([[choice]]).to(device)
+        output, (state_h, state_c) = net(ix.long(), (state_h, state_c))
+
+        _, top_ix = torch.topk(output[0], k=top_k)
+        choices = top_ix.tolist()
+        choice = np.random.choice(choices[0])
+        words.append(int_to_vocab[choice])
+
+    print(''.join(words))
+
 def main():
+    epochs = 50
     device = torch.device('cuda' if torch.cuda.is_available() is False else 'cpu')
     int_to_vocab, vocab_to_int, n_vocab, in_text, out_text = get_data_from_file(
         flags.train_file, flags.batch_size, flags.seq_size)
@@ -86,7 +113,7 @@ def main():
     criterion, optimizer = get_loss_and_train_op(net, 0.01)
 
     iteration = 0
-    for e in range(50):
+    for e in range(epochs):
         batches = get_batches(in_text, out_text, flags.batch_size, flags.seq_size)
         state_h, state_c = net.zero_state(flags.batch_size)
 
@@ -94,6 +121,7 @@ def main():
         state_h = state_h.to(device)
         state_c = state_c.to(device)
         for x, y in batches:
+
             iteration += 1
 
             # Tell it we are in training mode
@@ -122,42 +150,17 @@ def main():
 
             optimizer.step()
 
-            if iteration % 20 == 0:
-                print('Epoch: {}/{}'.format(e, 200),
+            if iteration % 10000 == 0:
+                print('Epoch: {}/{}'.format(e, epochs),
                       'Iteration: {}'.format(iteration),
                       'Loss: {}'.format(loss_value))
 
-            if iteration % 20 == 0:
-                predict(device, net, ["I", "am"], n_vocab,
+            if iteration % 10000 == 0:
+                predict(device, net, ['h'], 100,
                         vocab_to_int, int_to_vocab, top_k=5)
 
 
 
-def predict(device, net, words, n_vocab, vocab_to_int, int_to_vocab, top_k=5):
-    net.eval()
-
-    state_h, state_c = net.zero_state(1)
-    state_h = state_h.to(device)
-    state_c = state_c.to(device)
-    for w in words:
-        ix = torch.tensor([[vocab_to_int[w]]]).to(device)
-        output, (state_h, state_c) = net(ix.long(), (state_h, state_c))
-
-    _, top_ix = torch.topk(output[0], k=top_k)
-    choices = top_ix.tolist()
-    choice = np.random.choice(choices[0])
-
-    words.append(int_to_vocab[choice])
-    for _ in range(50):
-        ix = torch.tensor([[choice]]).to(device)
-        output, (state_h, state_c) = net(ix.long(), (state_h, state_c))
-
-        _, top_ix = torch.topk(output[0], k=top_k)
-        choices = top_ix.tolist()
-        choice = np.random.choice(choices[0])
-        words.append(int_to_vocab[choice])
-
-    print(' '.join(words))
 
 if __name__ == '__main__':
     main()
