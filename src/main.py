@@ -95,7 +95,7 @@ def train(model, inputs_seq, targets_seq, n_epochs, eta, dataProcessor):
                 if words:
                     print(sampleW(model, 100, ['you'], dataProcessor))
                 else:
-                    print(sample(model, 100, "a", dataProcessor))
+                    print(sample(model, 200, "a", dataProcessor))
 
     plt.plot(iters, losses)
     plt.xlabel('Update')
@@ -119,7 +119,7 @@ if __name__ == "__main__":
     hidden_size = 64
     # Define the parameters used for the training
     eta = 0.01
-    n_epoch = 3
+    n_epoch = 5
 
     processor = DataWordProcessor(file_name) if words else DataCharProcessor(file_name)
     inputs, targets = processor.encodeData(seq_length, batch_size)

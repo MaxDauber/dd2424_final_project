@@ -70,6 +70,7 @@ class BasicLSTM(nn.Module):
         return (h, c)
 
 class StackedLSTM(nn.Module):
+    # This is a stacked LSTM model with skip connections
     def __init__(self, input_size, hidden_dim, n_layers, embedding_size=None):
         super(StackedLSTM, self).__init__()
 
