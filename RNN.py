@@ -70,6 +70,34 @@ def sample(model, out_len, start='hey'):
 
     return ''.join(chars)
 
+def predictWords(model, out_len, words, dataProcessor, top_k=5):
+    model.eval()
+
+    hiddens = model.init_hidden(1)
+
+    for w in words:
+        ix = torch.tensor([[dataProcessor.char2int[w]]])
+        output, hiddens = model(ix.long(), hiddens)
+
+    _, top_ix = torch.topk(output[0], k=top_k)
+    choices = top_ix.tolist()
+    choice = np.random.choice(choices[0])
+
+    words.append(dataProcessor.int2char[choice])
+    while len(words) < out_len:
+        ix = torch.tensor([[choice]])
+        output, hiddens = model(ix.long(), hiddens)
+
+        _, top_ix = torch.topk(output[0], k=top_k)
+        choices = top_ix.tolist()
+        choice = np.random.choice(choices[0])
+
+        word = dataProcessor.int2char[choice]
+        if word != "<unk>":
+            words.append(word)
+
+    return ' '.join(words)
+
 def detach(layers):
     '''
     Remove variables' parent node after each sequence,

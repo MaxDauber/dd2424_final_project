@@ -9,22 +9,22 @@ from argparse import Namespace
 
 flags = Namespace(
     train_file='Datasets/goblet_book.txt',
-    seq_size=25,
-    batch_size=1,
-    embedding_size=83,
-    lstm_size=100,
+    seq_size=32,
+    batch_size=16,
+    embedding_size=64,
+    lstm_size=64,
     gradients_norm=5,
-    initial_words=['H'],
+    initial_words=['I'],
     predict_top_k=5,
 )
 
 def get_data_from_file(train_file, batch_size, seq_size):
     with open(train_file, 'r') as f:
         text = f.read()
-    #text = text.split()
+    text = text.split()
 
     word_counts = Counter(text)
-    sorted_vocab = set(text)#sorted(word_counts, key=word_counts.get, reverse=True)
+    sorted_vocab = sorted(word_counts, key=word_counts.get, reverse=True)
     int_to_vocab = {k: w for k, w in enumerate(sorted_vocab)}
     vocab_to_int = {w: k for k, w in int_to_vocab.items()}
     n_vocab = len(int_to_vocab)
@@ -89,16 +89,18 @@ def predict(device, net, words, n_vocab, vocab_to_int, int_to_vocab, top_k=5):
     choice = np.random.choice(choices[0])
 
     words.append(int_to_vocab[choice])
-    for _ in range(n_vocab):
+    while len(words) < n_vocab:
         ix = torch.tensor([[choice]]).to(device)
         output, (state_h, state_c) = net(ix.long(), (state_h, state_c))
 
         _, top_ix = torch.topk(output[0], k=top_k)
         choices = top_ix.tolist()
         choice = np.random.choice(choices[0])
-        words.append(int_to_vocab[choice])
+        word = int_to_vocab[choice]
+        if word != "<unk>":
+            words.append(word)
 
-    print(''.join(words))
+    print(' '.join(words))
 
 def main():
     epochs = 50
@@ -110,7 +112,7 @@ def main():
                     flags.embedding_size, flags.lstm_size)
     net = net.to(device)
 
-    criterion, optimizer = get_loss_and_train_op(net, 0.01)
+    criterion, optimizer = get_loss_and_train_op(net, 0.001)
 
     iteration = 0
     for e in range(epochs):
@@ -150,13 +152,13 @@ def main():
 
             optimizer.step()
 
-            if iteration % 10000 == 0:
+            if iteration % 100 == 0:
                 print('Epoch: {}/{}'.format(e, epochs),
                       'Iteration: {}'.format(iteration),
                       'Loss: {}'.format(loss_value))
 
-            if iteration % 10000 == 0:
-                predict(device, net, ['h'], 100,
+            if iteration % 1000 == 0:
+                predict(device, net, ['you', 'are'], 100,
                         vocab_to_int, int_to_vocab, top_k=5)
 
 
