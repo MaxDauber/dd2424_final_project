@@ -1,7 +1,9 @@
 import torch
 from torch import nn
+import numpy as np
 from Models import BasicLSTM, RNN, StackedLSTM
-from dataProcessor import DataProcessor, one_hot_encode
+from dataProcessor import DataCharProcessor, DataWordProcessor, one_hot_encode
+import matplotlib.pyplot as plt
 
 def detach(layers):
     if (type(layers) is list) or (type(layers) is tuple):
@@ -14,7 +16,7 @@ def detach(layers):
 def predict(model, characters, dataProcessor):
     # One-hot encoding our input to fit into the model
     characters = [dataProcessor.char2int[c] for c in characters]
-    characters = one_hot_encode(characters, dataProcessor.encoding_size, len(characters), 1)
+    characters = one_hot_encode(characters, dataProcessor.n_vocab, len(characters), 1)
     characters = torch.from_numpy(characters)
 
     out, hidden = model(characters)
@@ -36,10 +38,39 @@ def sample(model, out_len, start, dataProcessor):
 
     return ''.join(chars)
 
+def predictWords(net, out_len, words, dataProcessor, top_k=5):
+    net.eval()
+
+    hiddens = net.init_hidden(1)
+
+    for w in words:
+        ix = torch.tensor([[dataProcessor.char2int[w]]])
+        output, hiddens = net(ix.long(), hiddens)
+
+    _, top_ix = torch.topk(output[0], k=top_k)
+    choices = top_ix.tolist()
+    choice = np.random.choice(choices[0])
+
+    words.append(dataProcessor.int2char[choice])
+    for _ in range(out_len):
+        ix = torch.tensor([[choice]])
+        output, hiddens = net(ix.long(), hiddens)
+
+        _, top_ix = torch.topk(output[0], k=top_k)
+        choices = top_ix.tolist()
+        choice = np.random.choice(choices[0])
+        words.append(dataProcessor.int2char[choice])
+
+    print(' '.join(words))
+
 def train(model, inputs_seq, targets_seq, n_epochs, eta, dataProcessor):
     # Define Loss, Optimizer
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=eta)
+    optimizer = torch.optim.RMSprop(params=model.parameters(), lr=eta)
+
+    smooth_loss = None
+    iters = []
+    losses = []
 
     # Training Run
     iteration = 0
@@ -57,28 +88,45 @@ def train(model, inputs_seq, targets_seq, n_epochs, eta, dataProcessor):
 
             nn.utils.clip_grad_norm_(model.parameters(), 5)
             optimizer.step()  # Updates the weights accordingly
-            if iteration % 1000 == 0:
+
+            smooth_loss = loss.item() if smooth_loss is None else .999 * smooth_loss + 0.001 * loss.item()
+
+            if iteration-1 % 100:
+                losses.append(smooth_loss)
+                iters.append(iteration)
+            if iteration % 500 == 0:
                 print('Iteration {}, Epoch: {}/{}.............'.format(iteration, epoch, n_epochs), end=' ')
-                print("Loss: {:.4f}".format(loss.item()))
-                print(sample(model, 100, 'Har', dataProcessor))
+                print("Smooth loss : {} Loss: {:.4f}".format(smooth_loss, loss.item()))
+                print(sample(model, 100, "H", dataProcessor))
+
+    plt.plot(iters, losses)
+    plt.xlabel('Update')
+    plt.ylabel('loss')
+    plt.title("Graph of smooth loss at every 100th update step")
+    plt.show()
+
 
 if __name__ == "__main__":
+
+    # Choose to generate with words or characters
+    words = False
 
     # Define the parameters used for the data
     file_name = "../Datasets/goblet_book.txt"
     seq_length = 25
-    batch_size = 1
-    # Define the paremeters used for the model
+    batch_size = 16
+    embedding_size = None
+    # Define the parameters used for the model
     n_layers = 1
     hidden_size = 100
-    # Define the paremeters used for the training
+    # Define the parameters used for the training
     eta = 0.1
-    n_epoch = 100
+    n_epoch = 10
 
-    processor = DataProcessor(file_name)
+    processor = DataWordProcessor(file_name) if words else DataCharProcessor(file_name)
     inputs, targets = processor.encodeData(seq_length, batch_size)
 
     # Create the model
-    model = StackedLSTM(input_size=processor.encoding_size, hidden_dim=hidden_size, n_layers=n_layers)
+    model = BasicLSTM(input_size=processor.n_vocab, hidden_dim=hidden_size, n_layers=n_layers, embedding_size=embedding_size)
 
     train(model, inputs, targets, n_epoch, eta, processor)

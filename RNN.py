@@ -41,7 +41,6 @@ def one_hot_encode(sequence, dict_size, seq_len, batch_size):
     # Replacing the 0 at the relevant character index with a 1 to represent that character
     for i in range(batch_size):
         for u in range(seq_len):
-            #print((i+1)*u)
             features[i, u, sequence[i*seq_len + u]] = 1
     return features
 
@@ -140,7 +139,7 @@ for epoch in range(1, n_epochs + 1):
 
         nn.utils.clip_grad_norm_(model.parameters(), 5)
         optimizer.step()  # Updates the weights accordingly
-        if iteration % 1000 == 0:
+        if iteration % 10000 == 0:
             print('Iteration {}, Epoch: {}/{}.............'.format(iteration, epoch, n_epochs), end=' ')
             print("Loss: {:.4f}".format(loss.item()))
-            print(sample(model, 100, 'Har'))
+            print(sample(model, 100, 'v'))
