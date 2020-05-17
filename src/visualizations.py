@@ -77,7 +77,7 @@ def load(fname):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='embedding visualization toolkit')
     parser.add_argument('file', type=str, help='A textual file containing word vectors')
-    parser.add_argument('-v', '--vector-type', default='w2v', choices=['w2v', 'ri'])
+    parser.add_argument('-v', '--vector-type', default='w2v', choices=['w2v', 'bert'])
     parser.add_argument('-d', '--decomposition', default='svd', choices=['svd', 'pca'],
                         help='Your favorite decomposition method')
     args = parser.parse_args()
@@ -106,7 +106,7 @@ if __name__ == '__main__':
     # input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute")).unsqueeze(0)  # Batch size 1
     # outputs = model(input_ids)
     # hidden_states = outputs[0]
-    # last_layer = hidden_states[-1]
+
     # print(last_layer)
 
     # Load pre-trained model tokenizer (vocabulary)
@@ -156,4 +156,21 @@ if __name__ == '__main__':
         predicted_index = torch.argmax(predictions[0, masked_index]).item()
         predicted_token = tokenizer.convert_ids_to_tokens([predicted_index])
         print(predicted_token)
+
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    print("print")
+    model = BertModel.from_pretrained('bert-base-uncased')
+    input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute")).unsqueeze(0)  # Batch size 1
+    outputs = model(input_ids)
+    hidden_states = outputs[0]
+    last_layer = hidden_states[-1]
+
+    pca = PCA(n_components=2)
+    pca.fit_transform(last_layer)
+    x = pca.components_[0]
+    y = pca.components_[1]
+
+    draw_interactive(x, y, text)
+
+
 
