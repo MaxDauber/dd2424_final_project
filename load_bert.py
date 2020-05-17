@@ -1,6 +1,8 @@
 import torch
 from pytorch_pretrained_bert import BertTokenizer, BertModel, BertForMaskedLM
 import numpy as np
+import logging
+import matplotlib.pyplot as plt
 
 
 # tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
@@ -15,9 +17,12 @@ import numpy as np
 
 # Load pre-trained model tokenizer (vocabulary)
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+book_fname = 'Datasets/goblet_book.txt'
+with open(book_fname) as file:
+    text = file.read()
 
 
-text = "dummy. although he had already eaten a large meal, he was still very hungry."
+# text = "dummy. although he had already eaten a large meal, he was still very hungry."
 target = "hungry"
 tokenized_text = tokenizer.tokenize(text)
 
@@ -45,10 +50,12 @@ model.eval()
 
 
 # Predict all tokens
-predictions = model(tokens_tensor, segments_tensors)
+with torch.no_grad():
+    predictions = model(tokens_tensor, segments_tensors)
+
+
 predicted_index = torch.argmax(predictions[0, masked_index]).item()
 predicted_token = tokenizer.convert_ids_to_tokens([predicted_index])
-print(predictions[0][-1])
 
 print("Original:", text)
 print("Masked:", " ".join(tokenized_text))
